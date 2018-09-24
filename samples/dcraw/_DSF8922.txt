@@ -1,0 +1,19 @@
+
+Filename: _DSF8922.RAF
+Timestamp: Mon Sep 24 09:22:28 2018
+Camera: Fujifilm X-H1
+Owner:                                                                
+ISO speed: 1250
+Shutter: 1/28.6 sec
+Aperture: f/4.0
+Focal length: 55.0 mm
+Embedded ICC profile: no
+Number of raw images: 1
+Thumb size:  1920 x 1280
+Full size:   6160 x 4032
+Image size:  6032 x 4032
+Output size: 6032 x 4032
+Raw colors: 3
+Filter pattern: RBGBRG/GGRGGB/GGBGGR/BRGRBG/GGBGGR/GGRGGB
+Daylight multipliers: 2.172911 0.947554 1.527738
+Camera multipliers: 614.000000 302.000000 622.000000 0.000000
