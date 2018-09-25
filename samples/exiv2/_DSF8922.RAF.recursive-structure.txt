@@ -1,0 +1,16 @@
+STRUCTURE OF RAF FILE: samples/_DSF8922.RAF
+    Length |   Offset | Payload
+        16 |        0 | Magic number : FUJIFILMCCD-RAW 
+         4 |       16 | data 1 : 0201
+         8 |       20 | data 2 : FA129506
+        32 |       28 | camera : X-H1
+         4 |       60 | dir version : 0111
+         4 |       84 | JPEG Image Offset : 148
+         4 |       88 | JPEG Image Length : 553227
+         4 |       92 | CFA Header Offset : 553384
+         4 |       96 | CFA Header Length : 22104
+         4 |      100 | CFA Offset : 575488
+         4 |      104 | CFA Length : 49676288
+    553227 |      148 | jpg image / exif : ......Exif..II*
+     22104 |   553384 | CFA Header: ................
+  49676288 |   575488 | CFA : II*............
