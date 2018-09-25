@@ -256,7 +256,7 @@ type CFAData struct {
 	width, height int
 	data          []uint16
 
-	out []color.RGBA
+	out []color.RGBA64
 }
 
 type Color int
@@ -287,38 +287,11 @@ func filterColor(row, col int) Color {
 // The FujiFilm X-H1 has a color depth of 14 bits
 const BitDepth = 1 << 14
 
-func (c CFAData) nearestNeighbor(x int, y int, targetColor Color) uint8 {
-	for dX := -1; dX <= 1; dX++ {
-		if x+dX >= c.width ||
-			x+dX < 0 {
-			continue
-		}
-		for dY := -1; dY <= 1; dY++ {
-			if y+dY >= c.height ||
-				y+dY < 0 {
-				continue
-			}
-
-			if filterColor(x+dX, y+dY) == targetColor {
-				var intensity uint8
-				// Do something
-
-				intensity = uint8((float64(c.data[(y+dY)*c.width+((x+dX)%c.width)]) / float64(BitDepth)) * 255)
-
-				return intensity
-			}
-		}
-	}
-
-	log.Println("Couldn't find values for (", x, ",", y, ")")
-	return 0
+func (c CFAData) intensityAt(x, y int) uint16 {
+	return uint16(c.data[y*c.width+(x%c.width)]) * 4
 }
 
-func (c CFAData) intensityAt(x, y int) uint8 {
-	return uint8((float64(c.data[y*c.width+(x%c.width)]) / float64(BitDepth)) * 255)
-}
-
-func (c CFAData) bilinearInterp(x, y int, targetColor Color) uint8 {
+func (c CFAData) bilinearInterp(x, y int, targetColor Color) uint16 {
 	var intensityAcc uint64
 	var intensityCount uint64
 
@@ -340,10 +313,10 @@ func (c CFAData) bilinearInterp(x, y int, targetColor Color) uint8 {
 		}
 	}
 
-	return uint8(intensityAcc / intensityCount)
+	return uint16(intensityAcc / intensityCount)
 }
 
-func (c CFAData) outAt(x, y int) *color.RGBA {
+func (c CFAData) outAt(x, y int) *color.RGBA64 {
 	return &c.out[y*c.width+x]
 }
 
@@ -361,7 +334,7 @@ func (c CFAData) Demosaic() {
 		case Blue:
 			c.out[i].B = c.intensityAt(x, y)
 		}
-		c.out[i].A = 255
+		c.out[i].A = 65535
 	}
 
 	// Interp green into non-green pixels
@@ -391,7 +364,7 @@ func (c CFAData) Demosaic() {
 	}
 }
 
-func (c CFAData) colorRatioInterp(x, y int, target Color) uint8 {
+func (c CFAData) colorRatioInterp(x, y int, target Color) uint16 {
 	var intensityAcc uint64
 	var intensityCount uint64
 
@@ -425,7 +398,7 @@ func (c CFAData) colorRatioInterp(x, y int, target Color) uint8 {
 		}
 	}
 
-	return uint8(float64(intensityAcc) / float64(intensityCount) * float64(c.outAt(x, y).G))
+	return uint16(float64(intensityAcc) / float64(intensityCount) * float64(c.outAt(x, y).G))
 
 }
 
@@ -433,40 +406,8 @@ func (c CFAData) At(x int, y int) color.Color {
 	return c.out[y*c.width+x]
 }
 
-/*
-func (c CFAData) At(x int, y int) color.Color {
-	pixel := color.RGBA{A: 255}
-
-	// intensity := (float64(c.data[y*6160+(x%6160)]) / 65535) * 255
-	intensity := c.intensityAt(x, y)
-
-	switch filterColor(x, y) {
-	case Red:
-		// pixel.R = intensity
-		// pixel.G = c.nearestNeighbor(x, y, Green)
-		// pixel.B = c.nearestNeighbor(x, y, Blue)
-
-		pixel.G = c.bilinearInterp(x, y, Green)
-	case Green:
-		// pixel.R = c.nearestNeighbor(x, y, Red)
-		// pixel.G = intensity
-		// pixel.B = c.nearestNeighbor(x, y, Blue)
-
-		pixel.G = intensity
-	case Blue:
-		// pixel.R = c.nearestNeighbor(x, y, Red)
-		// pixel.G = c.nearestNeighbor(x, y, Green)
-		// pixel.B = intensity
-
-		pixel.G = c.bilinearInterp(x, y, Green)
-	}
-
-	return pixel
-}
-*/
-
 func (c CFAData) ColorModel() color.Model {
-	return color.RGBAModel
+	return color.RGBA64Model
 }
 
 func (c CFAData) Bounds() image.Rectangle {
@@ -489,7 +430,7 @@ func DoStuffWithCFABytes(data []byte) {
 	}
 	defer f.Close()
 
-	cfaData := CFAData{data: make([]uint16, 6160*4032), width: 6160, height: 4032, out: make([]color.RGBA, 6160*4032)}
+	cfaData := CFAData{data: make([]uint16, 6160*4032), width: 6160, height: 4032, out: make([]color.RGBA64, 6160*4032)}
 	binary.Read(bytes.NewBuffer(rawData), binary.LittleEndian, cfaData.data)
 
 	cfaData.Demosaic()
