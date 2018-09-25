@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
+	"image/jpeg"
 	"io"
 	"io/ioutil"
 	"log"
@@ -286,28 +286,25 @@ func filterColor(row, col int) Color {
 const BitDepth = 1 << 14
 
 func (c CFAData) At(x int, y int) color.Color {
-	pixel := color.Gray{}
+	pixel := color.RGBA{A: 255}
 
 	// intensity := (float64(c.data[y*6160+(x%6160)]) / 65535) * 255
 	intensity := uint8((float64(c.data[y*c.width+(x%c.width)]) / float64(BitDepth)) * 255)
-	pixel.Y = intensity
 
-	/*
-		switch filterColor(x, y) {
-		case Red:
-			pixel.R = intensity
-		case Green:
-			pixel.G = intensity
-		case Blue:
-			pixel.B = intensity
-		}
-	*/
+	switch filterColor(x, y) {
+	case Red:
+		pixel.R = intensity
+	case Green:
+		pixel.G = intensity
+	case Blue:
+		pixel.B = intensity
+	}
 
 	return pixel
 }
 
 func (c CFAData) ColorModel() color.Model {
-	return color.GrayModel
+	return color.RGBAModel
 }
 
 func (c CFAData) Bounds() image.Rectangle {
@@ -324,7 +321,7 @@ func DoStuffWithCFABytes(data []byte) {
 		log.Panicln(err)
 	}
 
-	f, err := os.Create(filepath.Join(dir, "rawimg.png"))
+	f, err := os.Create(filepath.Join(dir, "rawimg.jpg"))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -335,7 +332,7 @@ func DoStuffWithCFABytes(data []byte) {
 
 	log.Printf("% d", cfaData.data[10000:10024])
 
-	png.Encode(f, cfaData)
+	jpeg.Encode(f, cfaData, &jpeg.Options{Quality: 100})
 	log.Printf("Raw image at: %s", f.Name())
 }
 
