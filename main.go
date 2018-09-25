@@ -10,12 +10,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/rwcarlsen/goexif/exif"
+	"github.com/rwcarlsen/goexif/mknote"
 )
 
 // 8922 expected raw resolution of 6000x4000, adobe rgb, depth 8bit, 300ppi
 
 func main() {
-	log.Println("Giraffe loves pictures ��")
+	log.Println("Giraffe loves pictures 🦒")
 
 	log.Println("inPath:", inPath)
 	log.Println("outPath:", outPath)
@@ -37,6 +40,20 @@ func main() {
 	if err := ioutil.WriteFile(outPath, jpgBytes, 0666); err != nil {
 		log.Panicln(err)
 	}
+
+	jpgBytes2 := bytes.NewBuffer(jpgBytes)
+	exif.RegisterParsers(mknote.All...)
+
+	x, err := exif.Decode(jpgBytes2)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("%+v\n", x)
+
+	focal, _ := x.Get(exif.FocalLength)
+	numer, denom, _ := focal.Rat2(0) // retrieve first (only) rat. value
+	fmt.Printf("%v\n", numer/denom)
 
 	metaBytes := make([]byte, rawHeader.CfaHeaderLength)
 	_, err = file.ReadAt(metaBytes, int64(rawHeader.CfaHeaderOffset))
