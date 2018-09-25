@@ -195,15 +195,6 @@ func ReadRAFSubdir(r io.Reader) {
 	}
 }
 
-func SearchForValue(data []byte, test uint16) {
-	for i := 0; i < len(data)-4; i++ {
-		num := binary.BigEndian.Uint16(data[i : i+2])
-		if num == test {
-			log.Println("holy shit we found it", i)
-		}
-	}
-}
-
 func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 	var header CFAHeader
 	if err := binary.Read(hReader, binary.BigEndian, &header.NumRecords); err != nil {
@@ -234,26 +225,13 @@ func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 			compressed := ((rawProps & 0xFF0000) >> 16) & 8
 			rec.Data = compressed
 		case 0xc000:
-			SearchForValue(data, 4966)
-
-			start, end := 0, 4
-			e := binary.BigEndian
-
-			n := e.Uint32(data[start:end])
-			start, end = end, end+4
-			if n > 10000 {
-				n = e.Uint32(data[start:end])
-				start, end = end, end+4
+			d := bytes.NewBuffer(data)
+			w, h, err := getRAFWidthHeight(d)
+			if err != nil {
+				log.Panicln(err)
 			}
-
-			if n > 10000 {
-				n = e.Uint32(data[start:end])
-				start, end = end, end+4
-			}
-
-			log.Printf("Width! %d", n)
+			rec.Data = struct{ Width, Height uint32 }{w, h}
 		default:
-			log.Print("TagID", rec.TagID)
 			continue
 		}
 
@@ -261,6 +239,44 @@ func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 	}
 
 	return header, nil
+}
+
+func getRAFWidthHeight(r io.Reader) (uint32, uint32, error) {
+	var width uint32
+
+	for {
+		var err error
+		width, err = get4(r)
+		if err != nil {
+			return 0, 0, err
+		}
+
+		if width < 10000 {
+			break
+		}
+	}
+
+	height, err := get4(r)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	log.Printf("Width: %d, Height: %d", width, height)
+
+	return width, height, nil
+}
+
+func get4(r io.Reader) (uint32, error) {
+	buf := make([]byte, 4)
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		log.Panicln(err)
+	}
+
+	num := binary.LittleEndian.Uint32(buf)
+	log.Printf("Get4: num(%d) % x", num, buf)
+
+	return num, nil
 }
 
 func (r RAWHeader) String() string {
