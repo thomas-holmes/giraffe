@@ -253,7 +253,8 @@ func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 }
 
 type CFAData struct {
-	data []uint16
+	width, height int
+	data          []uint16
 }
 
 type Color int
@@ -281,11 +282,14 @@ func filterColor(row, col int) Color {
 	return XTransPattern[(row+6)%6][(col+6)%6]
 }
 
+// The FujiFilm X-H1 has a color depth of 14 bits
+const BitDepth = 1 << 14
+
 func (c CFAData) At(x int, y int) color.Color {
 	pixel := color.Gray{}
 
 	// intensity := (float64(c.data[y*6160+(x%6160)]) / 65535) * 255
-	intensity := uint8((float64(c.data[y*6160+(x%6160)]) / float64(16384)) * 255)
+	intensity := uint8((float64(c.data[y*c.width+(x%c.width)]) / float64(BitDepth)) * 255)
 	pixel.Y = intensity
 
 	/*
@@ -326,7 +330,7 @@ func DoStuffWithCFABytes(data []byte) {
 	}
 	defer f.Close()
 
-	cfaData := CFAData{data: make([]uint16, 6160*4032)}
+	cfaData := CFAData{data: make([]uint16, 6160*4032), width: 6160, height: 4032}
 	binary.Read(bytes.NewBuffer(rawData), binary.LittleEndian, cfaData.data)
 
 	log.Printf("% d", cfaData.data[10000:10024])
