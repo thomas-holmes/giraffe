@@ -38,8 +38,6 @@ func main() {
 		log.Panicln(err)
 	}
 
-	// file.Seek(int64(rawHeader.CfaHeaderOffset), 0)
-
 	metaBytes := make([]byte, rawHeader.CfaHeaderLength)
 	_, err = file.ReadAt(metaBytes, int64(rawHeader.CfaHeaderOffset))
 	if err != nil {
@@ -52,6 +50,10 @@ func main() {
 	}
 
 	log.Println(cfaHeader)
+
+	raw := RAWContainer{RAWHeader: rawHeader, CFAHeader: cfaHeader}
+
+	_ = raw
 
 }
 
@@ -67,6 +69,8 @@ func ReadRawHeader(rawFile *os.File) (RAWHeader, error) {
 
 type RAWContainer struct {
 	RAWHeader
+
+	CFAHeader
 }
 
 type RAWHeader struct {
@@ -118,6 +122,71 @@ func (c CFARecord) String() string {
 	)
 }
 
+func ReadRAFData(r io.Reader) {
+	data := make([]byte, 16)
+
+	if err := binary.Read(r, binary.LittleEndian, &data); err != nil {
+		log.Panicln(err)
+	}
+
+	log.Printf(`
+	RawImageWidth %d
+	RawImageWidth %d
+	RawImageHeight %d
+	RawImageWidth %d
+	RawImageHeight %d
+	RawImageHeight %d
+	`,
+		binary.LittleEndian.Uint32(data[:4]),
+		binary.LittleEndian.Uint16(data[4:6]),
+		binary.LittleEndian.Uint16(data[6:8]),
+		binary.LittleEndian.Uint16(data[8:10]),
+		binary.LittleEndian.Uint16(data[10:12]),
+		binary.LittleEndian.Uint32(data[12:]),
+	)
+}
+
+func ReadRAFSubdir(r io.Reader) {
+	var numRecords uint32
+	if err := binary.Read(r, binary.BigEndian, &numRecords); err != nil {
+		log.Panicln(err)
+	}
+
+	for i := uint32(0); i < numRecords; i++ {
+		var tagID uint16
+		if err := binary.Read(r, binary.BigEndian, &tagID); err != nil {
+			log.Panicln(err)
+		}
+		var recSize uint16
+		if err := binary.Read(r, binary.BigEndian, recSize); err != nil {
+			log.Panicln(err)
+		}
+
+		data := make([]byte, recSize)
+		if err := binary.Read(r, binary.BigEndian, data); err != nil {
+			log.Panicln(err)
+		}
+
+		log.Printf(`
+		tag: %#x
+		recSize: %d
+		data: %v
+		`,
+			tagID,
+			recSize,
+			data)
+	}
+}
+
+func SearchForValue(data []byte, test uint16) {
+	for i := 0; i < len(data)-4; i++ {
+		num := binary.BigEndian.Uint16(data[i : i+2])
+		if num == test {
+			log.Println("holy shit we found it", i)
+		}
+	}
+}
+
 func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 	var header CFAHeader
 	if err := binary.Read(hReader, binary.BigEndian, &header.NumRecords); err != nil {
@@ -134,6 +203,7 @@ func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 		}
 
 		data := make([]byte, rec.Size)
+
 		if err := binary.Read(hReader, binary.BigEndian, data); err != nil {
 			return header, err
 		}
@@ -146,7 +216,27 @@ func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 			rawProps := binary.BigEndian.Uint32(data)
 			compressed := ((rawProps & 0xFF0000) >> 16) & 8
 			rec.Data = compressed
+		case 0xc000:
+			SearchForValue(data, 4966)
+
+			start, end := 0, 4
+			e := binary.BigEndian
+
+			n := e.Uint32(data[start:end])
+			start, end = end, end+4
+			if n > 10000 {
+				n = e.Uint32(data[start:end])
+				start, end = end, end+4
+			}
+
+			if n > 10000 {
+				n = e.Uint32(data[start:end])
+				start, end = end, end+4
+			}
+
+			log.Printf("Width! %d", n)
 		default:
+			log.Print("TagID", rec.TagID)
 			continue
 		}
 
