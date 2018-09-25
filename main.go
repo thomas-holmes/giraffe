@@ -5,6 +5,9 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"io/ioutil"
 	"log"
@@ -67,6 +70,14 @@ func main() {
 	}
 
 	log.Println(cfaHeader)
+
+	cfaBytes := make([]byte, rawHeader.CfaLength)
+	_, err = file.ReadAt(cfaBytes, int64(rawHeader.CfaOffset))
+	if err != nil {
+		log.Panicln(err)
+	}
+
+	DoStuffWithCFABytes(cfaBytes)
 
 	raw := RAWContainer{RAWHeader: rawHeader, CFAHeader: cfaHeader}
 
@@ -241,6 +252,89 @@ func ReadCFAHeader(hReader io.Reader) (CFAHeader, error) {
 	return header, nil
 }
 
+type CFAData struct {
+	data []uint16
+}
+
+type Color int
+
+const (
+	// Green Represents a Green pixel
+	Green Color = 0
+	// Blue Represents a Blue pixel
+	Blue Color = 1
+	// Red Represents a Red pixel
+	Red Color = 2
+)
+
+var XTransPattern = [][]Color{
+	[]Color{Green, Blue, Green, Green, Red, Green},
+	[]Color{Red, Green, Red, Blue, Green, Blue},
+	[]Color{Green, Blue, Green, Green, Red, Green},
+	[]Color{Green, Red, Green, Green, Blue, Green},
+	[]Color{Blue, Green, Blue, Red, Green, Red},
+	[]Color{Green, Red, Green, Green, Blue, Green},
+}
+
+// given a row and a column, return the color of this pixel
+func filterColor(row, col int) Color {
+	return XTransPattern[(row+6)%6][(col+6)%6]
+}
+
+func (c CFAData) At(x int, y int) color.Color {
+	pixel := color.Gray{}
+
+	// intensity := (float64(c.data[y*6160+(x%6160)]) / 65535) * 255
+	intensity := uint8((float64(c.data[y*6160+(x%6160)]) / float64(16384)) * 255)
+	pixel.Y = intensity
+
+	/*
+		switch filterColor(x, y) {
+		case Red:
+			pixel.R = intensity
+		case Green:
+			pixel.G = intensity
+		case Blue:
+			pixel.B = intensity
+		}
+	*/
+
+	return pixel
+}
+
+func (c CFAData) ColorModel() color.Model {
+	return color.GrayModel
+}
+
+func (c CFAData) Bounds() image.Rectangle {
+	return image.Rect(0, 0, 6160, 4032)
+}
+
+func DoStuffWithCFABytes(data []byte) {
+	_ = data[:2048] // unused header?
+	rawData := data[2048:]
+	log.Printf("CFA Bytes len %d % #x", len(rawData), rawData[:32])
+
+	dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		log.Panicln(err)
+	}
+
+	f, err := os.Create(filepath.Join(dir, "rawimg.png"))
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer f.Close()
+
+	cfaData := CFAData{data: make([]uint16, 6160*4032)}
+	binary.Read(bytes.NewBuffer(rawData), binary.LittleEndian, cfaData.data)
+
+	log.Printf("% d", cfaData.data[10000:10024])
+
+	png.Encode(f, cfaData)
+	log.Printf("Raw image at: %s", f.Name())
+}
+
 func getRAFWidthHeight(r io.Reader) (uint32, uint32, error) {
 	var width uint32
 
@@ -274,7 +368,6 @@ func get4(r io.Reader) (uint32, error) {
 	}
 
 	num := binary.LittleEndian.Uint32(buf)
-	log.Printf("Get4: num(%d) % x", num, buf)
 
 	return num, nil
 }
