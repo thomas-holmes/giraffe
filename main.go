@@ -28,7 +28,7 @@ var (
 func init() {
 	flag.StringVar(&outPath, "out", "", "Path of output file")
 	flag.StringVar(&inPath, "in", "", "Path of input file")
-	flag.StringVar(&demosaic, "demosaic", "", "Demosaic method, valid options are: none, nearest_neighbor")
+	flag.StringVar(&demosaic, "demosaic", "", "Demosaic method, valid options are: none, color_hue, nearest_neighbor")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose output")
 
 	flag.Parse()
@@ -533,38 +533,6 @@ func (c CFAData) At(x int, y int) color.Color {
 	}
 	return c.rgb[y*c.width+x]
 }
-
-/*
-func (c CFAData) At(x int, y int) color.Color {
-	pixel := color.RGBA{A: 255}
-
-	// intensity := (float64(c.data[y*6160+(x%6160)]) / 65535) * 255
-	intensity := c.intensityAt(x, y)
-
-	switch filterColor(x, y) {
-	case Red:
-		// pixel.R = intensity
-		// pixel.G = c.nearestNeighbor(x, y, Green)
-		// pixel.B = c.nearestNeighbor(x, y, Blue)
-
-		pixel.G = c.bilinearInterp(x, y, Green)
-	case Green:
-		// pixel.R = c.nearestNeighbor(x, y, Red)
-		// pixel.G = intensity
-		// pixel.B = c.nearestNeighbor(x, y, Blue)
-
-		pixel.G = intensity
-	case Blue:
-		// pixel.R = c.nearestNeighbor(x, y, Red)
-		// pixel.G = c.nearestNeighbor(x, y, Green)
-		// pixel.B = intensity
-
-		pixel.G = c.bilinearInterp(x, y, Green)
-	}
-
-	return pixel
-}
-*/
 
 func (c CFAData) ColorModel() color.Model {
 	if demosaic == "" {
