@@ -19,10 +19,11 @@ import (
 )
 
 var (
-	outPath  string
-	inPath   string
-	demosaic string
-	verbose  bool
+	outPath      string
+	inPath       string
+	demosaic     string
+	verbose      bool
+	whiteBalance bool
 )
 
 func init() {
@@ -30,6 +31,7 @@ func init() {
 	flag.StringVar(&inPath, "in", "", "Path of input file")
 	flag.StringVar(&demosaic, "demosaic", "", "Demosaic method, valid options are: none, color_hue, nearest_neighbor")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose output")
+	flag.BoolVar(&whiteBalance, "white-balance", false, "Enable white balancing for grayscale images")
 
 	flag.Parse()
 
@@ -480,12 +482,57 @@ func (c CFAData) grayscaleImage() {
 	}
 }
 
+func (c CFAData) balanceGrayScale() {
+	var min, max uint16 = 0xFFFF, 0
+
+	for i := range c.grayscale {
+		intensity := c.grayscale[i].Y
+		if intensity < min && intensity != 0 {
+			min = intensity
+		}
+		if intensity > max {
+			max = intensity
+		}
+	}
+
+	if verbose {
+		log.Printf("Intensity values of min %d and max %d", min, max)
+	}
+
+	intensityRange := max - min
+	step := float64(intensityRange) / 16
+
+	for i := range c.grayscale {
+		intensity := c.grayscale[i].Y
+
+		window := (intensity - min) / uint16(step) // which of 16 buckets am I in
+
+		newIntensity := window * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
+
+		partial := (intensity - min) - uint16(step)*window // Find my left over piece to figure out how far through the bucket i am
+
+		prorata := float64(partial) / step // what percent through the bucket am i
+
+		newPartial := prorata * (1 << 12) // multiple by 1/16h of max uint16
+
+		if verbose && intensity > 0 {
+			// log.Printf("intensity %d, step %f, window %d, newIntensity %d, partial %d, prorata %f, newPartial %f", intensity, step, window, newIntensity, partial, prorata, newPartial)
+		}
+
+		c.grayscale[i].Y = (newIntensity + uint16(newPartial))
+	}
+
+}
+
 func (c CFAData) Demosaic(method string) {
 	switch method {
 	case "color_hue":
 		c.demosaicUsingColorHue()
 	default:
 		c.grayscaleImage()
+		if whiteBalance {
+			c.balanceGrayScale()
+		}
 	}
 }
 
