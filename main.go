@@ -525,78 +525,68 @@ func (c CFAData) balanceGrayScale() {
 }
 
 func (c CFAData) balanceColors() {
-	var minR, maxR uint16 = 0xFFFF, 0
-	var minG, maxG uint16 = 0xFFFF, 0
-	var minB, maxB uint16 = 0xFFFF, 0
-
-	for i := range c.rgb {
-		intensityR := c.rgb[i].R
-		intensityG := c.rgb[i].G
-		intensityB := c.rgb[i].B
-
-		if intensityR < minR && intensityR != 0 {
-			minR = intensityR
-		}
-		if intensityR > maxR {
-			maxR = intensityR
-		}
-
-		if intensityG < minG && intensityG != 0 {
-			minG = intensityG
-		}
-		if intensityG > maxG {
-			maxG = intensityG
-		}
-
-		if intensityB < minB && intensityB != 0 {
-			minB = intensityB
-		}
-		if intensityB > maxB {
-			maxB = intensityB
+	getColor := func(p color.RGBA64, targetColor Color) uint16 {
+		switch targetColor {
+		case Red:
+			return p.R
+		case Green:
+			return p.G
+		case Blue:
+			return p.B
+		default:
+			log.Println("Invalid color value passed", targetColor)
+			return 0
 		}
 	}
 
-	if verbose {
-		log.Printf("Intensity values of Red [%d, %d], G [%d, %d], B [%d, %d]", minR, maxR, minG, maxG, minB, maxB)
+	setColor := func(p *color.RGBA64, targetColor Color, value uint16) {
+		switch targetColor {
+		case Red:
+			p.R = value
+		case Green:
+			p.G = value
+		case Blue:
+			p.B = value
+		default:
+			log.Println("Invalid color value passed", targetColor)
+		}
+
 	}
 
-	intensityRangeR := maxR - minR
-	intensityRangeG := maxG - minG
-	intensityRangeB := maxB - minB
-	stepR := float64(intensityRangeR) / 16
-	stepG := float64(intensityRangeG) / 16
-	stepB := float64(intensityRangeB) / 16
+	for _, targetColor := range []Color{Red, Green, Blue} {
 
-	for i := range c.rgb {
-		intensityR := c.rgb[i].R
-		intensityG := c.rgb[i].G
-		intensityB := c.rgb[i].B
+		var min, max uint16 = 0xFFFF, 0
 
-		windowR := (intensityR - minR) / uint16(stepR) // which of 16 buckets am I in
-		windowG := (intensityG - minG) / uint16(stepG) // which of 16 buckets am I in
-		windowB := (intensityB - minB) / uint16(stepB) // which of 16 buckets am I in
+		for i := range c.rgb {
+			intensity := getColor(c.rgb[i], targetColor)
 
-		newIntensityR := windowR * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
-		newIntensityG := windowG * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
-		newIntensityB := windowB * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
+			if intensity < min && intensity != 0 {
+				min = intensity
+			}
+			if intensity > max {
+				max = intensity
+			}
+		}
 
-		partialR := (intensityR - minR) - uint16(stepR)*windowR // Find my left over piece to figure out how far through the bucket i am
-		partialG := (intensityG - minG) - uint16(stepG)*windowG // Find my left over piece to figure out how far through the bucket i am
-		partialB := (intensityB - minB) - uint16(stepB)*windowB // Find my left over piece to figure out how far through the bucket i am
+		intensityRange := max - min
+		step := float64(intensityRange) / 16
 
-		prorataR := float64(partialR) / stepR // what percent through the bucket am i
-		prorataG := float64(partialG) / stepG // what percent through the bucket am i
-		prorataB := float64(partialB) / stepB // what percent through the bucket am i
+		for i := range c.rgb {
+			intensity := getColor(c.rgb[i], targetColor)
 
-		newPartialR := prorataR * (1 << 12) // multiple by 1/16h of max uint16
-		newPartialG := prorataG * (1 << 12) // multiple by 1/16h of max uint16
-		newPartialB := prorataB * (1 << 12) // multiple by 1/16h of max uint16
+			window := (intensity - min) / uint16(step) // which of 16 buckets am I in
 
-		c.rgb[i].R = (newIntensityR + uint16(newPartialR))
-		c.rgb[i].G = (newIntensityG + uint16(newPartialG))
-		c.rgb[i].B = (newIntensityB + uint16(newPartialB))
+			newIntensity := window * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
+
+			partial := (intensity - min) - uint16(step)*window // Find my left over piece to figure out how far through the bucket i am
+
+			prorata := float64(partial) / step // what percent through the bucket am i
+
+			newPartial := prorata * (1 << 12) // multiple by 1/16h of max uint16
+
+			setColor(&c.rgb[i], targetColor, (newIntensity + uint16(newPartial)))
+		}
 	}
-
 }
 
 func (c CFAData) Demosaic(method string) {
