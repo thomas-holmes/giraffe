@@ -28,7 +28,7 @@ var (
 func init() {
 	flag.StringVar(&outPath, "out", "", "Path of output file")
 	flag.StringVar(&inPath, "in", "", "Path of input file")
-	flag.StringVar(&demosaic, "demosaic", "", "Demosaic method, valid options are: none, nearest_neighbor")
+	flag.StringVar(&demosaic, "demosaic", "", "Demosaic method, valid options are: none, color_hue")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose output")
 
 	flag.Parse()
@@ -355,33 +355,6 @@ func filterColor(row, col int) Color {
 // The FujiFilm X-H1 has a color depth of 14 bits
 const BitDepth = 1 << 14
 
-func (c CFAData) nearestNeighbor(x int, y int, targetColor Color) uint8 {
-	for dX := -1; dX <= 1; dX++ {
-		if x+dX >= c.width ||
-			x+dX < 0 {
-			continue
-		}
-		for dY := -1; dY <= 1; dY++ {
-			if y+dY >= c.height ||
-				y+dY < 0 {
-				continue
-			}
-
-			if filterColor(x+dX, y+dY) == targetColor {
-				var intensity uint8
-				// Do something
-
-				intensity = uint8((float64(c.data[(y+dY)*c.width+((x+dX)%c.width)]) / float64(BitDepth)) * 255)
-
-				return intensity
-			}
-		}
-	}
-
-	log.Println("Couldn't find values for (", x, ",", y, ")")
-	return 0
-}
-
 func (c CFAData) intensityAt(x, y int) uint16 {
 	// shift 14 bit to 16 bit
 	return c.data[y*c.width+(x%c.width)] * 4
@@ -526,38 +499,6 @@ func (c CFAData) At(x int, y int) color.Color {
 	}
 	return c.rgb[y*c.width+x]
 }
-
-/*
-func (c CFAData) At(x int, y int) color.Color {
-	pixel := color.RGBA{A: 255}
-
-	// intensity := (float64(c.data[y*6160+(x%6160)]) / 65535) * 255
-	intensity := c.intensityAt(x, y)
-
-	switch filterColor(x, y) {
-	case Red:
-		// pixel.R = intensity
-		// pixel.G = c.nearestNeighbor(x, y, Green)
-		// pixel.B = c.nearestNeighbor(x, y, Blue)
-
-		pixel.G = c.bilinearInterp(x, y, Green)
-	case Green:
-		// pixel.R = c.nearestNeighbor(x, y, Red)
-		// pixel.G = intensity
-		// pixel.B = c.nearestNeighbor(x, y, Blue)
-
-		pixel.G = intensity
-	case Blue:
-		// pixel.R = c.nearestNeighbor(x, y, Red)
-		// pixel.G = c.nearestNeighbor(x, y, Green)
-		// pixel.B = intensity
-
-		pixel.G = c.bilinearInterp(x, y, Green)
-	}
-
-	return pixel
-}
-*/
 
 func (c CFAData) ColorModel() color.Model {
 	if demosaic == "" {
