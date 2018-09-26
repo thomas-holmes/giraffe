@@ -18,45 +18,109 @@ import (
 	"github.com/rwcarlsen/goexif/mknote"
 )
 
+var (
+	outPath string
+	inPath  string
+	verbose bool
+)
+
+func init() {
+	flag.StringVar(&outPath, "out", "", "Path of output file")
+	flag.StringVar(&inPath, "in", "", "Path of input file")
+	flag.BoolVar(&verbose, "verbose", false, "Enable verbose output")
+
+	flag.Parse()
+
+	if _, err := os.Stat(inPath); err != nil { // os.IsNotExist(err) {
+		log.Panicln(err)
+	}
+
+	if outPath == "" {
+		tempDir, err := ioutil.TempDir("", "")
+		if err != nil {
+			log.Panicln(err)
+		}
+		outPath = filepath.Join(tempDir, "output.jpg")
+	}
+
+	if verbose {
+		fmt.Printf("inPath: %+v\n", inPath)
+		fmt.Printf("outPath: %+v\n", outPath)
+		fmt.Printf("verbose: %+v\n", verbose)
+	}
+}
+
 // 8922 expected raw resolution of 6000x4000, adobe rgb, depth 8bit, 300ppi
 
 func main() {
 	log.Println("Giraffe loves pictures 🦒")
 
-	log.Println("inPath:", inPath)
-	log.Println("outPath:", outPath)
+	flag.Parse()
+
+	if inPath == "" {
+		log.Fatal("requires an -in=image.raf")
+	}
 
 	file, err := os.Open(inPath)
 	if err != nil {
 		log.Panicln(err)
 	}
 
+	switch flag.Arg(0) {
+	case "exif":
+		displayExifData(file)
+	case "render":
+		renderImage(file)
+	default:
+		log.Fatal("invalid command")
+	}
+}
+
+func displayExifData(file *os.File) {
+	if verbose {
+		log.Println("inPath:", inPath)
+	}
+
 	rawHeader, err := ReadRawHeader(file)
 	if err != nil {
-		log.Panicln(err)
+		log.Fatal(err)
 	}
-	log.Println(rawHeader)
+
+	if verbose {
+		fmt.Printf("rawHeader: %+v\n", rawHeader)
+	}
 
 	jpgBytes := make([]byte, rawHeader.JpgLength)
 	file.ReadAt(jpgBytes, int64(rawHeader.JpgOffset))
 
-	if err := ioutil.WriteFile(outPath, jpgBytes, 0666); err != nil {
-		log.Panicln(err)
-	}
-
-	jpgBytes2 := bytes.NewBuffer(jpgBytes)
 	exif.RegisterParsers(mknote.All...)
 
-	x, err := exif.Decode(jpgBytes2)
+	x, err := exif.Decode(bytes.NewBuffer(jpgBytes))
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	log.Printf("%+v\n", x)
+}
 
-	focal, _ := x.Get(exif.FocalLength)
-	numer, denom, _ := focal.Rat2(0) // retrieve first (only) rat. value
-	fmt.Printf("%v\n", numer/denom)
+func renderImage(file *os.File) {
+	if outPath == "" {
+		log.Fatal("requires -out=image.jpg")
+	}
+
+	if verbose {
+		log.Println("inPath:", inPath)
+		log.Println("outPath:", outPath)
+	}
+
+	rawHeader, err := ReadRawHeader(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if verbose {
+		fmt.Printf("rawHeader: %+v\n", rawHeader)
+	}
 
 	metaBytes := make([]byte, rawHeader.CfaHeaderLength)
 	_, err = file.ReadAt(metaBytes, int64(rawHeader.CfaHeaderOffset))
@@ -82,7 +146,6 @@ func main() {
 	raw := RAWContainer{RAWHeader: rawHeader, CFAHeader: cfaHeader}
 
 	_ = raw
-
 }
 
 func ReadRawHeader(rawFile *os.File) (RAWHeader, error) {
@@ -564,29 +627,6 @@ func (r RAWHeader) String() string {
 		r.CfaOffset,
 		r.CfaLength,
 	)
-}
-
-var inPath string
-var outPath string
-
-func init() {
-	flag.StringVar(&outPath, "o", "", "Path of output file")
-
-	flag.Parse()
-
-	inPath = flag.Arg(0)
-
-	if _, err := os.Stat(inPath); err != nil { // os.IsNotExist(err) {
-		log.Panicln(err)
-	}
-
-	if outPath == "" {
-		tempDir, err := ioutil.TempDir("", "")
-		if err != nil {
-			log.Panicln(err)
-		}
-		outPath = filepath.Join(tempDir, "output.jpg")
-	}
 }
 
 const (
