@@ -323,8 +323,8 @@ type CFAData struct {
 	width, height int
 	data          []uint16
 
-	grayscale []color.Gray
-	rgb       []color.RGBA
+	grayscale []color.Gray16
+	rgb       []color.RGBA64
 }
 
 type Color int
@@ -382,11 +382,12 @@ func (c CFAData) nearestNeighbor(x int, y int, targetColor Color) uint8 {
 	return 0
 }
 
-func (c CFAData) intensityAt(x, y int) uint8 {
-	return uint8((float64(c.data[y*c.width+(x%c.width)]) / float64(BitDepth)) * 255)
+func (c CFAData) intensityAt(x, y int) uint16 {
+	// shift 14 bit to 16 bit
+	return c.data[y*c.width+(x%c.width)] * 4
 }
 
-func (c CFAData) bilinearInterp(x, y int, targetColor Color) uint8 {
+func (c CFAData) bilinearInterp(x, y int, targetColor Color) uint16 {
 	var intensityAcc uint64
 	var intensityCount uint64
 
@@ -408,14 +409,14 @@ func (c CFAData) bilinearInterp(x, y int, targetColor Color) uint8 {
 		}
 	}
 
-	return uint8(intensityAcc / intensityCount)
+	return uint16(intensityAcc / intensityCount)
 }
 
-func (c CFAData) grayAt(x, y int) *color.Gray {
+func (c CFAData) grayAt(x, y int) *color.Gray16 {
 	return &c.grayscale[y*c.width+x]
 }
 
-func (c CFAData) rgbAt(x, y int) *color.RGBA {
+func (c CFAData) rgbAt(x, y int) *color.RGBA64 {
 	return &c.rgb[y*c.width+x]
 }
 
@@ -481,7 +482,7 @@ func (c CFAData) Demosaic(method string) {
 	}
 }
 
-func (c CFAData) colorRatioInterp(x, y int, target Color) uint8 {
+func (c CFAData) colorRatioInterp(x, y int, target Color) uint16 {
 	var intensityAcc uint64
 	var intensityCount uint64
 
@@ -515,7 +516,7 @@ func (c CFAData) colorRatioInterp(x, y int, target Color) uint8 {
 		}
 	}
 
-	return uint8(float64(intensityAcc) / float64(intensityCount) * float64(c.rgbAt(x, y).G))
+	return uint16(float64(intensityAcc) / float64(intensityCount) * float64(c.rgbAt(x, y).G))
 
 }
 
@@ -562,7 +563,7 @@ func (c CFAData) ColorModel() color.Model {
 	if demosaic == "" {
 		return color.GrayModel
 	}
-	return color.RGBAModel
+	return color.RGBA64Model
 }
 
 func (c CFAData) Bounds() image.Rectangle {
@@ -589,8 +590,8 @@ func DoStuffWithCFABytes(data []byte) {
 		data:      make([]uint16, 6160*4032),
 		width:     6160,
 		height:    4032,
-		grayscale: make([]color.Gray, 6160*4032),
-		rgb:       make([]color.RGBA, 6160*4032)}
+		grayscale: make([]color.Gray16, 6160*4032),
+		rgb:       make([]color.RGBA64, 6160*4032)}
 
 	binary.Read(bytes.NewBuffer(rawData), binary.LittleEndian, cfaData.data)
 
