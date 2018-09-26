@@ -19,14 +19,16 @@ import (
 )
 
 var (
-	outPath string
-	inPath  string
-	verbose bool
+	outPath  string
+	inPath   string
+	demosaic string
+	verbose  bool
 )
 
 func init() {
 	flag.StringVar(&outPath, "out", "", "Path of output file")
 	flag.StringVar(&inPath, "in", "", "Path of input file")
+	flag.StringVar(&demosaic, "demosaic", "", "Demosaic method, valid options are: none, nearest_neighbor")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose output")
 
 	flag.Parse()
@@ -133,7 +135,9 @@ func renderImage(file *os.File) {
 		log.Panicln(err)
 	}
 
-	log.Println(cfaHeader)
+	if verbose {
+		log.Println(cfaHeader)
+	}
 
 	cfaBytes := make([]byte, rawHeader.CfaLength)
 	_, err = file.ReadAt(cfaBytes, int64(rawHeader.CfaOffset))
@@ -319,7 +323,8 @@ type CFAData struct {
 	width, height int
 	data          []uint16
 
-	out []color.RGBA
+	grayscale []color.Gray
+	rgb       []color.RGBA
 }
 
 type Color int
@@ -406,51 +411,73 @@ func (c CFAData) bilinearInterp(x, y int, targetColor Color) uint8 {
 	return uint8(intensityAcc / intensityCount)
 }
 
-func (c CFAData) outAt(x, y int) *color.RGBA {
-	return &c.out[y*c.width+x]
+func (c CFAData) grayAt(x, y int) *color.Gray {
+	return &c.grayscale[y*c.width+x]
 }
 
-func (c CFAData) Demosaic() {
+func (c CFAData) rgbAt(x, y int) *color.RGBA {
+	return &c.rgb[y*c.width+x]
+}
+
+func (c CFAData) demosaicUsingColorHue() {
 	// Setup our initial intermediate color array values
-	for i := range c.out {
+	for i := range c.rgb {
 		x := i % c.width
 		y := i / c.width
 
 		switch filterColor(x, y) {
 		case Red:
-			c.out[i].R = c.intensityAt(x, y)
+			c.rgb[i].R = c.intensityAt(x, y)
 		case Green:
-			c.out[i].G = c.intensityAt(x, y)
+			c.rgb[i].G = c.intensityAt(x, y)
 		case Blue:
-			c.out[i].B = c.intensityAt(x, y)
+			c.rgb[i].B = c.intensityAt(x, y)
 		}
-		c.out[i].A = 255
+		c.rgb[i].A = 255
 	}
 
 	// Interp green into non-green pixels
-	for i := range c.out {
+	for i := range c.rgb {
 		x := i % c.width
 		y := i / c.width
 
 		if filterColor(x, y) != Green {
-			c.out[i].G = c.bilinearInterp(x, y, Green)
+			c.rgb[i].G = c.bilinearInterp(x, y, Green)
 		}
 	}
 
 	// interp non greens onto neighboring pixels
-	for i := range c.out {
+	for i := range c.rgb {
 		x := i % c.width
 		y := i / c.width
 
 		switch filterColor(x, y) {
 		case Blue:
-			c.outAt(x, y).R = c.colorRatioInterp(x, y, Red)
+			c.rgbAt(x, y).R = c.colorRatioInterp(x, y, Red)
 		case Red:
-			c.outAt(x, y).B = c.colorRatioInterp(x, y, Blue)
+			c.rgbAt(x, y).B = c.colorRatioInterp(x, y, Blue)
 		case Green:
-			c.outAt(x, y).R = c.colorRatioInterp(x, y, Red)
-			c.outAt(x, y).B = c.colorRatioInterp(x, y, Blue)
+			c.rgbAt(x, y).R = c.colorRatioInterp(x, y, Red)
+			c.rgbAt(x, y).B = c.colorRatioInterp(x, y, Blue)
 		}
+	}
+}
+
+func (c CFAData) grayscaleImage() {
+	for i := range c.grayscale {
+		x := i % c.width
+		y := i / c.width
+
+		c.grayAt(x, y).Y = c.intensityAt(x, y)
+	}
+}
+
+func (c CFAData) Demosaic(method string) {
+	switch method {
+	case "color_hue":
+		c.demosaicUsingColorHue()
+	default:
+		c.grayscaleImage()
 	}
 }
 
@@ -471,7 +498,7 @@ func (c CFAData) colorRatioInterp(x, y int, target Color) uint8 {
 			}
 
 			if filterColor(x+dX, y+dY) == target {
-				pix := c.outAt(x+dX, y+dY)
+				pix := c.rgbAt(x+dX, y+dY)
 				switch target {
 				case Red:
 					if pix.G != 0 {
@@ -488,12 +515,15 @@ func (c CFAData) colorRatioInterp(x, y int, target Color) uint8 {
 		}
 	}
 
-	return uint8(float64(intensityAcc) / float64(intensityCount) * float64(c.outAt(x, y).G))
+	return uint8(float64(intensityAcc) / float64(intensityCount) * float64(c.rgbAt(x, y).G))
 
 }
 
 func (c CFAData) At(x int, y int) color.Color {
-	return c.out[y*c.width+x]
+	if demosaic == "" {
+		return c.grayscale[y*c.width+x]
+	}
+	return c.rgb[y*c.width+x]
 }
 
 /*
@@ -529,6 +559,9 @@ func (c CFAData) At(x int, y int) color.Color {
 */
 
 func (c CFAData) ColorModel() color.Model {
+	if demosaic == "" {
+		return color.GrayModel
+	}
 	return color.RGBAModel
 }
 
@@ -552,10 +585,16 @@ func DoStuffWithCFABytes(data []byte) {
 	}
 	defer f.Close()
 
-	cfaData := CFAData{data: make([]uint16, 6160*4032), width: 6160, height: 4032, out: make([]color.RGBA, 6160*4032)}
+	cfaData := CFAData{
+		data:      make([]uint16, 6160*4032),
+		width:     6160,
+		height:    4032,
+		grayscale: make([]color.Gray, 6160*4032),
+		rgb:       make([]color.RGBA, 6160*4032)}
+
 	binary.Read(bytes.NewBuffer(rawData), binary.LittleEndian, cfaData.data)
 
-	cfaData.Demosaic()
+	cfaData.Demosaic(demosaic)
 
 	jpeg.Encode(f, cfaData, &jpeg.Options{Quality: 100})
 	log.Printf("Raw image at: %s", f.Name())
