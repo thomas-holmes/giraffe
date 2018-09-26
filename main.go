@@ -482,7 +482,7 @@ func (c CFAData) grayscaleImage() {
 	}
 }
 
-func (c CFAData) balanceGrayScale() {
+func (c CFAData) balanceGrayScaleWhites() {
 	var min, max uint16 = 0xFFFF, 0
 
 	for i := range c.grayscale {
@@ -524,7 +524,7 @@ func (c CFAData) balanceGrayScale() {
 
 }
 
-func (c CFAData) balanceColors() {
+func (c CFAData) balanceRGBWhites() {
 	getColor := func(p color.RGBA64, targetColor Color) uint16 {
 		switch targetColor {
 		case Red:
@@ -594,12 +594,12 @@ func (c CFAData) Demosaic(method string) {
 	case "color_hue":
 		c.demosaicUsingColorHue()
 		if whiteBalance {
-			c.balanceColors()
+			c.balanceRGBWhites()
 		}
 	default:
 		c.grayscaleImage()
 		if whiteBalance {
-			c.balanceGrayScale()
+			c.balanceGrayScaleWhites()
 		}
 	}
 }
