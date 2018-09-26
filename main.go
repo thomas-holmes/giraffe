@@ -524,10 +524,88 @@ func (c CFAData) balanceGrayScale() {
 
 }
 
+func (c CFAData) balanceColors() {
+	var minR, maxR uint16 = 0xFFFF, 0
+	var minG, maxG uint16 = 0xFFFF, 0
+	var minB, maxB uint16 = 0xFFFF, 0
+
+	for i := range c.rgb {
+		intensityR := c.rgb[i].R
+		intensityG := c.rgb[i].G
+		intensityB := c.rgb[i].B
+
+		if intensityR < minR && intensityR != 0 {
+			minR = intensityR
+		}
+		if intensityR > maxR {
+			maxR = intensityR
+		}
+
+		if intensityG < minG && intensityG != 0 {
+			minG = intensityG
+		}
+		if intensityG > maxG {
+			maxG = intensityG
+		}
+
+		if intensityB < minB && intensityB != 0 {
+			minB = intensityB
+		}
+		if intensityB > maxB {
+			maxB = intensityB
+		}
+	}
+
+	if verbose {
+		log.Printf("Intensity values of Red [%d, %d], G [%d, %d], B [%d, %d]", minR, maxR, minG, maxG, minB, maxB)
+	}
+
+	intensityRangeR := maxR - minR
+	intensityRangeG := maxG - minG
+	intensityRangeB := maxB - minB
+	stepR := float64(intensityRangeR) / 16
+	stepG := float64(intensityRangeG) / 16
+	stepB := float64(intensityRangeB) / 16
+
+	for i := range c.rgb {
+		intensityR := c.rgb[i].R
+		intensityG := c.rgb[i].G
+		intensityB := c.rgb[i].B
+
+		windowR := (intensityR - minR) / uint16(stepR) // which of 16 buckets am I in
+		windowG := (intensityG - minG) / uint16(stepG) // which of 16 buckets am I in
+		windowB := (intensityB - minB) / uint16(stepB) // which of 16 buckets am I in
+
+		newIntensityR := windowR * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
+		newIntensityG := windowG * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
+		newIntensityB := windowB * uint16(1<<12) // multiple bucket index by 1/16th of max uint16
+
+		partialR := (intensityR - minR) - uint16(stepR)*windowR // Find my left over piece to figure out how far through the bucket i am
+		partialG := (intensityG - minG) - uint16(stepG)*windowG // Find my left over piece to figure out how far through the bucket i am
+		partialB := (intensityB - minB) - uint16(stepB)*windowB // Find my left over piece to figure out how far through the bucket i am
+
+		prorataR := float64(partialR) / stepR // what percent through the bucket am i
+		prorataG := float64(partialG) / stepG // what percent through the bucket am i
+		prorataB := float64(partialB) / stepB // what percent through the bucket am i
+
+		newPartialR := prorataR * (1 << 12) // multiple by 1/16h of max uint16
+		newPartialG := prorataG * (1 << 12) // multiple by 1/16h of max uint16
+		newPartialB := prorataB * (1 << 12) // multiple by 1/16h of max uint16
+
+		c.rgb[i].R = (newIntensityR + uint16(newPartialR))
+		c.rgb[i].G = (newIntensityG + uint16(newPartialG))
+		c.rgb[i].B = (newIntensityB + uint16(newPartialB))
+	}
+
+}
+
 func (c CFAData) Demosaic(method string) {
 	switch method {
 	case "color_hue":
 		c.demosaicUsingColorHue()
+		if whiteBalance {
+			c.balanceColors()
+		}
 	default:
 		c.grayscaleImage()
 		if whiteBalance {
