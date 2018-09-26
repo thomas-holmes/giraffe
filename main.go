@@ -43,6 +43,7 @@ func init() {
 			log.Panicln(err)
 		}
 		outPath = filepath.Join(tempDir, "output.jpg")
+		log.Println("Defaulting output to", outPath)
 	}
 
 	if verbose {
@@ -110,6 +111,12 @@ func renderImage(file *os.File) {
 		log.Fatal("requires -out=image.jpg")
 	}
 
+	out, err := os.Create(outPath)
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer out.Close()
+
 	if verbose {
 		log.Println("inPath:", inPath)
 		log.Println("outPath:", outPath)
@@ -145,7 +152,7 @@ func renderImage(file *os.File) {
 		log.Panicln(err)
 	}
 
-	DoStuffWithCFABytes(cfaBytes)
+	DoStuffWithCFABytes(cfaBytes, out)
 
 	raw := RAWContainer{RAWHeader: rawHeader, CFAHeader: cfaHeader}
 
@@ -511,21 +518,10 @@ func (c CFAData) Bounds() image.Rectangle {
 	return image.Rect(0, 0, 6160, 4032)
 }
 
-func DoStuffWithCFABytes(data []byte) {
+func DoStuffWithCFABytes(data []byte, w io.Writer) {
 	_ = data[:2048] // unused header?
 	rawData := data[2048:]
 	log.Printf("CFA Bytes len %d % #x", len(rawData), rawData[:32])
-
-	dir, err := ioutil.TempDir("", "")
-	if err != nil {
-		log.Panicln(err)
-	}
-
-	f, err := os.Create(filepath.Join(dir, "rawimg.jpg"))
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer f.Close()
 
 	cfaData := CFAData{
 		data:      make([]uint16, 6160*4032),
@@ -538,8 +534,7 @@ func DoStuffWithCFABytes(data []byte) {
 
 	cfaData.Demosaic(demosaic)
 
-	jpeg.Encode(f, cfaData, &jpeg.Options{Quality: 100})
-	log.Printf("Raw image at: %s", f.Name())
+	jpeg.Encode(w, cfaData, &jpeg.Options{Quality: 100})
 }
 
 func getRAFWidthHeight(r io.Reader) (uint32, uint32, error) {
